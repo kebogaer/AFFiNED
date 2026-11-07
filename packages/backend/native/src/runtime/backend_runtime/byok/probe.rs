@@ -169,7 +169,10 @@ fn probe_request_for_operation(operation: &str) -> ExecutableRequest {
   let message = CoreMessage {
     role: CoreRole::User,
     content: vec![CoreContent::Text {
-      text: "Reply with OK.".to_string(),
+      text: match operation {
+        "structured" => "Return exactly {\"ok\":true}.".to_string(),
+        _ => "Reply with OK.".to_string(),
+      },
     }],
   };
   match operation {
@@ -177,8 +180,10 @@ fn probe_request_for_operation(operation: &str) -> ExecutableRequest {
       model: String::new(),
       messages: vec![message],
       stream: false,
-      max_tokens: Some(8),
-      temperature: Some(0.0),
+      // Reasoning models spend output tokens on thinking and some reject a
+      // fixed temperature, so leave room and use the provider default.
+      max_tokens: Some(64),
+      temperature: None,
       tools: if operation == "tool_calling" {
         vec![CoreToolDefinition {
           name: "byok_probe".to_string(),
@@ -202,8 +207,8 @@ fn probe_request_for_operation(operation: &str) -> ExecutableRequest {
         "required": ["ok"],
         "additionalProperties": false
       }),
-      max_tokens: Some(16),
-      temperature: Some(0.0),
+      max_tokens: Some(128),
+      temperature: None,
       reasoning: None,
       strict: Some(true),
       response_mime_type: Some("application/json".to_string()),
@@ -463,6 +468,34 @@ mod tests {
       }
     });
     (endpoint, receiver, handle)
+  }
+
+  #[test]
+  fn probe_requests_leave_room_for_reasoning_models() {
+    for operation in ["chat", "tool_calling"] {
+      let ExecutableRequest::Chat(request) = probe_request_for_operation(operation) else {
+        panic!("{operation} probe must be a chat request");
+      };
+      assert!(
+        request.max_tokens.unwrap_or_default() >= 64,
+        "{operation} token budget too small"
+      );
+      assert_eq!(
+        request.temperature, None,
+        "{operation} must use the provider default temperature"
+      );
+    }
+    let ExecutableRequest::Structured(request) = probe_request_for_operation("structured") else {
+      panic!("structured probe must be a structured request");
+    };
+    assert!(
+      request.max_tokens.unwrap_or_default() >= 128,
+      "structured token budget too small"
+    );
+    assert_eq!(
+      request.temperature, None,
+      "structured must use the provider default temperature"
+    );
   }
 
   #[test]
