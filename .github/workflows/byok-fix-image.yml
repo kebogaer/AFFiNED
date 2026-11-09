@@ -2,14 +2,19 @@ name: Build patched 0.27.4 image (BYOK fix)
 
 # Builds the patched server native module and layers it on top of the
 # official ghcr.io/toeverything/affine:0.27.4 image. The result is pushed to
-# ghcr.io/<this repository owner>/affine:0.27.4-byokfix and the GitHub release
-# for the tag gets the native modules attached.
+# ghcr.io/<this repository owner>/affine:0.27.4-byokfix and the GitHub
+# release v0.27.4-byokfix.1 gets the native modules attached.
 
 on:
   push:
+    branches:
+      - byok-probe-fix-0.27.4
     tags:
       - 'v0.27.4-byokfix*'
   workflow_dispatch:
+
+env:
+  RELEASE_TAG: v0.27.4-byokfix.1
 
 permissions:
   contents: write
@@ -79,14 +84,14 @@ jobs:
           tags: |
             ${{ steps.image.outputs.name }}:0.27.4-byokfix
             ${{ steps.image.outputs.name }}:0.27.4-byokfix-${{ github.sha }}
-      - name: Attach native modules to the release
-        if: startsWith(github.ref, 'refs/tags/')
+      - name: Publish the release with the native modules
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release create "$GITHUB_REF_NAME" \
+          gh release create "$RELEASE_TAG" \
             --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
             --title "AFFiNE 0.27.4 + BYOK key test fix" \
             --notes "Official AFFiNE 0.27.4 with the BYOK key test fixed for reasoning models (Gemini 3.x and similar). Docker image: \`${{ steps.image.outputs.name }}:0.27.4-byokfix\`" \
             ./.github/deployment/byok-fix/native/*.node \
-            || gh release upload "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --clobber ./.github/deployment/byok-fix/native/*.node
+            || gh release upload "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --clobber ./.github/deployment/byok-fix/native/*.node
